@@ -7,7 +7,7 @@
 A team-based social media platform built with **Next.js 14 (App Router)** and **Supabase**.  
 All actions are performed under a team identity — there are no individual profiles.
 
-> **Live Demo:** [vizio-team-social.vercel.app](https://vizio-team-social.vercel.app) *(deploy sonrası güncellenecek)*  
+> **Live Demo:** [vizio-team-social.vercel.app](https://vizio-team-social.vercel.app)  
 > **GitHub:** [github.com/oguzhan-baysal/vizio-team-social](https://github.com/oguzhan-baysal/vizio-team-social)
 
 ---
