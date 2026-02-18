@@ -3,6 +3,9 @@
 A team-based social media platform built with **Next.js 14 (App Router)** and **Supabase**.  
 All actions are performed under a team identity — there are no individual profiles.
 
+> **Live Demo:** [vizio-team-social.vercel.app](https://vizio-team-social.vercel.app) *(deploy sonrası güncellenecek)*  
+> **GitHub:** [github.com/oguzhan-baysal/vizio-team-social](https://github.com/oguzhan-baysal/vizio-team-social)
+
 ---
 
 ## 🚀 Setup Instructions
@@ -15,8 +18,8 @@ All actions are performed under a team identity — there are no individual prof
 ### 1. Clone & Install
 
 ```bash
-git clone <your-repo-url>
-cd team-social
+git clone https://github.com/oguzhan-baysal/vizio-team-social.git
+cd vizio-team-social
 npm install
 ```
 
@@ -45,8 +48,9 @@ This creates all tables, RLS policies, helper functions, and the signup trigger.
 ### 4. Enable Google OAuth (Optional)
 
 1. Go to **Supabase Dashboard → Authentication → Providers → Google**
-2. Enable Google and add your OAuth credentials
-3. Set the redirect URL to: `http://localhost:3000/auth/callback`
+2. Enable Google and add your OAuth credentials from Google Cloud Console
+3. Add the Supabase callback URL to your Google OAuth app's authorized redirect URIs:  
+   `https://<your-project>.supabase.co/auth/v1/callback`
 
 ### 5. Run the Dev Server
 
@@ -58,6 +62,96 @@ Open [http://localhost:3000](http://localhost:3000) to see the app.
 
 ---
 
+## 🎬 Architecture Walkthrough
+
+> *This section serves as a written walkthrough of the architectural decisions, data model, and key design choices behind this project.*
+
+### The Core Problem & My Approach
+
+The central challenge of this case study is **team-based identity**: every action (posting, following) must be attributed to a *team*, not an individual user. This sounds simple but has deep implications for data modeling, security, and the authentication flow.
+
+My approach was to enforce this at **every layer of the stack**:
+- **Database level:** The `posts` table has no `author_user_id` column — only `team_id`. You physically cannot store individual authorship.
+- **RLS level:** Policies use a `get_my_team_id()` helper that resolves the team from the server-side session, not from client input.
+- **Application level:** Server Actions fetch `team_id` from `profiles` on every mutation. The client never sends a `team_id`.
+
+---
+
+### Data Model Decisions
+
+#### Why no `author_user_id` on posts?
+The spec says "no individual profiles." Storing `author_user_id` would create an implicit individual identity. By omitting it entirely, we make team ownership a structural guarantee, not just a convention.
+
+#### Why a separate `profiles` table instead of using `auth.users` metadata?
+Supabase's `auth.users` table is managed by the auth system and shouldn't be extended directly. The `profiles` table acts as the bridge between `auth.users` and `teams`, giving us a clean separation of concerns and a place to add user-specific data later without touching auth internals.
+
+#### Why a composite primary key on `team_follows`?
+`PRIMARY KEY (follower_id, following_id)` makes duplicate follows **impossible at the database level** — no application-level check needed. Combined with the `CHECK (follower_id <> following_id)` constraint, self-follows are also prevented at the DB level. Defense in depth.
+
+#### Why a Database Trigger for team creation?
+When a user signs up (via email or Google OAuth), they need a team immediately. Two alternatives:
+1. **Server Action after signup:** Requires two round trips and can fail silently if the second call errors.
+2. **Database Trigger (`handle_new_user`):** Runs atomically within the same transaction as the user creation. If team creation fails, the entire signup rolls back. No orphaned users without teams.
+
+The trigger approach is more robust and works identically for both email and OAuth signups.
+
+---
+
+### Security Architecture
+
+The most critical security decision: **`team_id` is never trusted from the client.**
+
+Here's the attack this prevents: A malicious user could modify the request payload to include a different team's ID, posting content on behalf of a team they don't belong to. Our Server Actions prevent this:
+
+```typescript
+// WRONG (vulnerable): accepting team_id from client
+const { team_id, content } = formData; // ❌ Never do this
+
+// RIGHT (secure): resolving team_id server-side
+const { data: profile } = await supabase
+  .from("profiles")
+  .select("team_id")
+  .eq("id", user.id)
+  .single();
+// profile.team_id is the ground truth ✅
+```
+
+Even if someone bypasses the UI, the RLS policy `posts_insert_own_team` enforces `team_id = get_my_team_id()` at the database level — a second layer of protection.
+
+---
+
+### Request Flow (End-to-End)
+
+```
+User clicks "Post"
+    ↓
+CreatePostForm (Client Component)
+    ↓ calls Server Action
+createPostAction() [Server]
+    ↓ verifies session
+supabase.auth.getUser()
+    ↓ resolves team_id (never from client)
+profiles.select("team_id").eq("id", user.id)
+    ↓ inserts post
+posts.insert({ content, team_id: profile.team_id })
+    ↓ RLS policy validates: team_id = get_my_team_id()
+    ↓ revalidatePath("/") — Next.js cache invalidation
+UI updates with new post
+```
+
+---
+
+### Session Management
+
+Next.js App Router Server Components don't have access to browser cookies by default. We use `@supabase/ssr` with a custom middleware (`middleware.ts`) that:
+1. Reads the session cookie on every request
+2. Refreshes the token if expired
+3. Writes the updated cookie back to the response
+
+This ensures Server Components always have a fresh, valid session without any client-side token management.
+
+---
+
 ## 📊 Supabase Schema
 
 ### Tables
@@ -65,9 +159,19 @@ Open [http://localhost:3000](http://localhost:3000) to see the app.
 | Table | Description |
 |---|---|
 | `teams` | Team identity (id, name, created_at) |
-| `profiles` | Links `auth.users` → `teams` (1-to-1 with users, N-to-1 with teams) |
+| `profiles` | Links `auth.users` → `teams` (1-to-1 with users) |
 | `posts` | Team-owned text posts (280 char limit, no individual author) |
 | `team_follows` | Directional team-to-team follow relationships |
+
+### Relationship Diagram
+
+```
+auth.users (1) ──── (1) profiles (N) ──── (1) teams
+                                                │
+                                           (N) posts
+                                                │
+                                      team_follows (N:M)
+```
 
 ### Key Constraints
 
@@ -91,19 +195,11 @@ Open [http://localhost:3000](http://localhost:3000) to see the app.
 get_my_team_id() → uuid
 ```
 
-Returns the authenticated user's `team_id` from the `profiles` table. Used in all team-scoped RLS policies to avoid repeated joins.
-
-### Signup Trigger
-
-When a new user is created in `auth.users`, the `handle_new_user()` trigger automatically:
-1. Creates a new team (name derived from email, with duplicate handling)
-2. Creates a profile linking the user to the team
-
-This works for both email/password and OAuth signups.
+Returns the authenticated user's `team_id` from the `profiles` table. Used in all team-scoped RLS policies to avoid repeated joins and to centralize the team resolution logic.
 
 ---
 
-## 🏗️ Architecture
+## 🏗️ Project Structure
 
 ```
 src/
@@ -133,13 +229,15 @@ src/
 
 ### Key Design Decisions
 
-1. **Server Actions for mutations** — All write operations (post creation, follow/unfollow, auth) use Next.js Server Actions. This ensures `team_id` is always resolved server-side.
+1. **Server Actions for all mutations** — All write operations use Next.js Server Actions. This keeps sensitive logic server-side and makes `team_id` resolution impossible to bypass.
 
 2. **`team_id` never from client** — The `createPostAction` fetches the user's `team_id` from the `profiles` table on the server. This prevents a malicious user from posting on behalf of another team.
 
-3. **Optimistic UI for follows** — The `FollowButton` component uses optimistic updates for instant feedback, reverting on error.
+3. **Optimistic UI for follows** — The `FollowButton` component uses `useOptimistic` for instant feedback, reverting on error.
 
-4. **Parallel data fetching** — Dashboard and team detail pages use `Promise.all` to fetch independent data in parallel.
+4. **Parallel data fetching** — Dashboard and team detail pages use `Promise.all` to fetch independent data in parallel, reducing waterfall latency.
+
+5. **No `author_user_id` on posts** — Posts belong to teams, not users. This is enforced structurally, not just by convention.
 
 ---
 
@@ -150,9 +248,9 @@ src/
 | Auto-create team on signup | Simplifies onboarding; team invite system is out of MVP scope |
 | Team name from email prefix | Quick MVP approach; proper name selection would be added with more time |
 | No `author_user_id` on posts | Spec explicitly states "no individual profiles" — posts belong to teams |
-| No post edit/delete | MVP scope — straightforward to add with RLS policies |
+| No post edit/delete | MVP scope — straightforward to add with proper RLS policies |
 | Feed limited to 50 posts | No pagination in MVP; cursor-based pagination planned for production |
-| Email verification not enforced | For faster demo flow; would be enabled in production |
+| Email verification disabled | For faster demo flow; would be enabled in production |
 | Duplicate team name handling | Trigger appends a counter suffix when email prefixes collide |
 
 ---
@@ -193,4 +291,4 @@ src/
 
 ## 📄 License
 
-This project was created as a case study submission. All rights reserved by the author.
+This project was created as a case study submission for Vizio Ventures. All rights reserved by the author.
