@@ -1,3 +1,7 @@
+<img width="1280" height="916" alt="Image" src="https://github.com/user-attachments/assets/5daf0239-2ea0-449e-aa8b-3c9549b5c9fd" />
+
+
+
 # TeamSocial — Team-Based Social Media MVP
 
 A team-based social media platform built with **Next.js 14 (App Router)** and **Supabase**.  
