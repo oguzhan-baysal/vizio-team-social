@@ -85,7 +85,7 @@ export default async function TeamDetailPage({ params }: Props) {
                 {posts && posts.length > 0 ? (
                     <div className="feed-list">
                         {posts.map((post) => (
-                            <PostCard key={post.id} post={post as any} />
+                            <PostCard key={post.id} post={post} />
                         ))}
                     </div>
                 ) : (

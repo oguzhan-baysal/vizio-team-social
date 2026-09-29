@@ -1,9 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
+import type { Team } from "@/lib/types";
 
 /**
  * Fetches all teams.
  */
-export async function getTeams() {
+export async function getTeams(): Promise<Team[]> {
     const supabase = await createClient();
 
     const { data, error } = await supabase
@@ -18,7 +19,7 @@ export async function getTeams() {
 /**
  * Fetches a single team by ID.
  */
-export async function getTeam(teamId: string) {
+export async function getTeam(teamId: string): Promise<Team | null> {
     const supabase = await createClient();
 
     const { data, error } = await supabase
@@ -57,7 +58,7 @@ export async function getMyTeamId(): Promise<string | null> {
  * Gets the current user's team (full team object).
  * Returns null if user is not authenticated.
  */
-export async function getMyTeam() {
+export async function getMyTeam(): Promise<Team | null> {
     const supabase = await createClient();
 
     const {
