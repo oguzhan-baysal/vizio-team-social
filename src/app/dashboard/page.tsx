@@ -74,7 +74,7 @@ export default async function DashboardPage() {
                 {teamPosts && teamPosts.length > 0 ? (
                     <div className="feed-list">
                         {teamPosts.map((post) => (
-                            <PostCard key={post.id} post={post as any} />
+                            <PostCard key={post.id} post={post} />
                         ))}
                     </div>
                 ) : (

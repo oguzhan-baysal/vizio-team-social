@@ -1,10 +1,11 @@
 import { createClient } from "@/lib/supabase/server";
+import type { PostWithTeam } from "@/lib/types";
 
 /**
  * Fetches the global feed — all posts from all teams, newest first.
  * No authentication required (public feed).
  */
-export async function getFeed(limit = 50) {
+export async function getFeed(limit = 50): Promise<PostWithTeam[]> {
     const supabase = await createClient();
 
     const { data, error } = await supabase
@@ -21,13 +22,16 @@ export async function getFeed(limit = 50) {
         .limit(limit);
 
     if (error) throw error;
-    return data;
+    return data ?? [];
 }
 
 /**
  * Fetches all posts for a specific team, newest first.
  */
-export async function getTeamPosts(teamId: string, limit = 50) {
+export async function getTeamPosts(
+    teamId: string,
+    limit = 50
+): Promise<PostWithTeam[]> {
     const supabase = await createClient();
 
     const { data, error } = await supabase
@@ -45,7 +49,7 @@ export async function getTeamPosts(teamId: string, limit = 50) {
         .limit(limit);
 
     if (error) throw error;
-    return data;
+    return data ?? [];
 }
 
 /**

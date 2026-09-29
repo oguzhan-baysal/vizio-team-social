@@ -33,7 +33,7 @@ export default async function HomePage() {
       )}
 
       <section className="home-section">
-        <FeedList posts={posts as any} />
+        <FeedList posts={posts} />
       </section>
     </div>
   );

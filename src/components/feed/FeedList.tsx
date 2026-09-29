@@ -1,20 +1,11 @@
 import PostCard from "./PostCard";
-
-type Post = {
-    id: string;
-    content: string;
-    created_at: string;
-    teams: {
-        id: string;
-        name: string;
-    };
-};
+import type { PostWithTeam } from "@/lib/types";
 
 /**
  * Renders the global feed as a list of PostCards.
  * Shows an empty state message when there are no posts.
  */
-export default function FeedList({ posts }: { posts: Post[] }) {
+export default function FeedList({ posts }: { posts: PostWithTeam[] }) {
     if (posts.length === 0) {
         return (
             <div className="empty-state">

@@ -1,21 +1,10 @@
 import Link from "next/link";
-
-type Post = {
-    id: string;
-    content: string;
-    created_at: string;
-    teams: {
-        id: string;
-        name: string;
-    };
-};
+import type { PostWithTeam } from "@/lib/types";
 
 /**
  * Renders a single post card showing team name, content, and timestamp.
  */
-export default function PostCard({ post }: { post: Post }) {
-    const timeAgo = getRelativeTime(post.created_at);
-
+export default function PostCard({ post }: { post: PostWithTeam }) {
     return (
         <article className="post-card">
             <div className="post-header">
@@ -25,9 +14,11 @@ export default function PostCard({ post }: { post: Post }) {
                 >
                     {post.teams.name}
                 </Link>
-                <time className="post-time" dateTime={post.created_at}>
-                    {timeAgo}
-                </time>
+                {post.created_at && (
+                    <time className="post-time" dateTime={post.created_at}>
+                        {getRelativeTime(post.created_at)}
+                    </time>
+                )}
             </div>
             <p className="post-content">{post.content}</p>
         </article>
